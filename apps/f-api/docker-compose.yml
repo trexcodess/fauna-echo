@@ -1,0 +1,19 @@
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: always
+    container_name: fleet-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: fauna-db
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    ports: 
+      - "5432:5432"
+    
+    
+volumes:
+  postgres_data:
+    driver: local

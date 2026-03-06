@@ -1,0 +1,218 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+  moduleFormat    = "cjs"
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [pgvector(map: "vector")]
+}
+
+// --- Enums ---
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  MEMBER
+  GUARDIAN
+  DETECTIVE
+  TRAINER
+  GUEST
+}
+
+enum PetStatus {
+  SAFE
+  MISSING
+  RECOVERED
+  RESCUE_IN_PROGRESS
+}
+
+enum AuthMethod {
+  wallet
+  paypal
+  email
+}
+
+enum Currency {
+  USDC
+  SOL
+  AR
+}
+
+enum MediaType {
+  image
+  video
+}
+
+// --- User & Auth Core Models ---
+
+model User {
+  id             String      @id @default(uuid())
+  email          String      @unique
+  arweaveAddress String?     @unique
+  solanaAddress  String?     @unique
+  xrplAddress    String?     @unique
+  name           String?
+  emailVerified  Boolean     @default(false)
+  image          String?
+  username       String?     @unique
+  role           UserRole    @default(MEMBER) // Renamed from 'user' to 'role' for clarity
+  bio            String?     @db.Text
+  isSubscribed   Boolean     @default(false)
+  authMethod     AuthMethod? @default(wallet)
+  password       String
+
+  pets           Pet[]       @relation("Owner")
+  investigations Sighting[]  @relation("Detective")
+  agentRank      String      @default("BRONZE_ECHO")
+
+  sessions       Session[]
+  accounts       Account[]
+
+  subscriptions  Subscription[]
+  ownedAssets    AtomicAsset[]
+  posts          FeedPost[]
+  
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model Pet {
+  id              String      @id @default(uuid())
+  name            String
+  status          PetStatus   @default(SAFE)
+  
+  // Relation Fix: Use the User model, not the Enum
+  ownerId         String
+  owner           User        @relation("Owner", fields: [ownerId], references: [id])
+
+  // Static Biometrics
+  microchipId     String?     @unique
+  nosePrintUrl    String?     
+  noseEmbedding   Unsupported("vector(1536)")?
+  geometry        String?     @db.Text 
+
+  // Dynamic Biometrics
+  gaitVideoUrl    String?    
+  gaitSignature   Unsupported("vector(768)")? 
+
+  // Bounty Logic
+  bountyActive    Boolean     @default(false)
+  bountyAmount    Float       @default(0)
+  bountyCurrency  Currency    @default(USDC)
+  lastKnownLat    Float?
+  lastKnownLng    Float?
+
+  sightings       Sighting[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model Sighting {
+  id               String   @id @default(uuid())
+  petId            String
+  pet              Pet      @relation(fields: [petId], references: [id])
+  detectiveId      String
+  detective        User     @relation("Detective", fields: [detectiveId], references: [id])
+  
+  latitude         Float
+  longitude        Float
+  confidenceScore  Float    
+  forensicReport   String   @db.Text 
+  cameraId         String?
+  capturedImageUrl String? 
+  timestamp        DateTime @default(now())
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                    String    @id @default(uuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model Verification {
+  id         String   @id @default(uuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model ShipModule {
+  id          String   @id @default(uuid())
+  name        String
+  description String   @db.Text
+  subdomain   String   @unique
+  icon        String
+  claimName   String   
+  
+  subscriptions Subscription[]
+  posts         FeedPost[]
+}
+
+model Subscription {
+  id          String     @id @default(uuid())
+  userId      String
+  moduleId    String
+  user        User       @relation(fields: [userId], references: [id])
+  module      ShipModule @relation(fields: [moduleId], references: [id])
+  
+  status      String     @default("ACTIVE") 
+  activatedAt DateTime   @default(now())
+  expiresAt   DateTime?
+
+  @@unique([userId, moduleId])
+}
+
+model AtomicAsset {
+  id           String   @id
+  title        String
+  artist       String
+  price        Float
+  currency     Currency
+  image        String
+  audioUrl     String
+  license      String
+  
+  ownerId      String
+  owner        User     @relation(fields: [ownerId], references: [id])
+}
+
+model FeedPost {
+  id        String      @id @default(uuid())
+  content   String      @db.Text
+  mediaUrl  String?
+  mediaType MediaType?
+  timestamp DateTime    @default(now())
+  
+  authorId  String
+  author    User        @relation(fields: [authorId], references: [id])
+  
+  moduleId  String?
+  module    ShipModule? @relation(fields: [moduleId], references: [id])
+}
